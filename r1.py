@@ -11,4 +11,9 @@ class Engine():
         self.prices = prices
     
     def get_data(self) -> None:
-        df = pd.dataframe(prices[0])
+        df = pd.read_csv(self.prices[0], sep=';')
+        print(df)
+
+engine = Engine("Engine", prices)
+engine.get_data()
+
