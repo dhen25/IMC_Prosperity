@@ -27,7 +27,7 @@ class BackTester:
         self.dfs = []
         for i, f in enumerate(self.prices):
             self.df = pd.read_csv(f, sep=";")
-            # make timestamp globally continuous: offset by 1_000_000 per day slot
+            # join historical data CSVs to continuous time series
             self.df["timestamp"] = self.df["timestamp"] + i * 1_000_000
             self.dfs.append(self.df)
         self.dfs = pd.concat(self.dfs, ignore_index=True)
