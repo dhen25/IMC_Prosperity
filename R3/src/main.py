@@ -38,7 +38,7 @@ def smile_iv(S: float, K: float) -> float:
     """Smile-adjusted implied vol for strike K given spot S."""
     m = math.log(S / K)
     base = _SMILE_A * m * m + _SMILE_B * m + _SMILE_C
-    return max(base + _STRIKE_BIAS.get(K, 0.0), 1e-6)
+    return max(base + _STRIKE_BIAS.get(int(K), 0.0), 1e-6)
 
 def smile_fair(S: float, K: float, T: float) -> float:
     return bs_call(S, K, T, smile_iv(S, K))
@@ -175,8 +175,8 @@ class Trader:
                     result[product] = self._option_orders(product, od, pos, limit, fair)
                 # VEV_4000/4500: wide spreads (~20 ticks), skip
                 # VEV_6000/6500: price ≈ 0, skip
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[{product}] {type(e).__name__}: {e}")
 
         return result, 0, ""
 
