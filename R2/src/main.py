@@ -3,16 +3,16 @@ from datamodel import OrderDepth, TradingState, Order
 POSITION_LIMITS = {"INTARIAN_PEPPER_ROOT": 80, "ASH_COATED_OSMIUM": 80,}
 
 OSMIUM_FAIR = 10000
-OSMIUM_SPREAD = 2
-OSMIUM_STD = 8.0    # historical std: range ~9977-10023, ~(46/6)
+OSMIUM_SPREAD = 3
+OSMIUM_STD = 5.0    # empirical std: chart range ±20 ticks → std ≈ 5
 OSMIUM_BASE_SIZE = 10
 OSMIUM_MAX_SIZE = 40
-OSMIUM_MAX_SKEW = 3  # max price shift from inventory skewing
+OSMIUM_MAX_SKEW = 5  # max price shift from inventory skewing
 
 class Trader:
 
     def bid(self):
-        pass
+        return 11
 
     def run(self, state: TradingState):
         result = {}
@@ -35,10 +35,16 @@ class Trader:
         """Always hold max long — price trends up ~1000/day, never sell."""
         orders = []
         buy_capacity = limit - pos
-        if buy_capacity > 0 and od.sell_orders:
-            best_ask, best_ask_vol = min(od.sell_orders.items())
-            qty = min(-best_ask_vol, buy_capacity)
-            orders.append(Order("INTARIAN_PEPPER_ROOT", best_ask, qty))
+        if buy_capacity <= 0 or not od.sell_orders:
+            return orders
+        # Walk the ask book aggressively — spread is wide (~15 ticks) so passive bids never fill
+        # in a trending market. Cost of 1 tick saved is dwarfed by the daily +1000 drift.
+        for ask_price, ask_vol in sorted(od.sell_orders.items()):
+            if buy_capacity <= 0:
+                break
+            qty = min(-ask_vol, buy_capacity)
+            orders.append(Order("INTARIAN_PEPPER_ROOT", ask_price, qty))
+            buy_capacity -= qty
         return orders
 
     def _osmium_orders(self, od, pos, limit):
@@ -68,16 +74,22 @@ class Trader:
         passive_bid = round(OSMIUM_FAIR - OSMIUM_SPREAD - skew)
         passive_ask = round(OSMIUM_FAIR + OSMIUM_SPREAD - skew)
 
-        # Take liquidity aggressively when price crosses our passive levels
+        # Take liquidity aggressively when price crosses our passive levels — walk the book
         if od.sell_orders and buy_capacity > 0:
-            best_ask, best_ask_vol = min(od.sell_orders.items())
-            if best_ask <= passive_bid:
-                orders.append(Order("ASH_COATED_OSMIUM", best_ask, min(-best_ask_vol, buy_capacity)))
+            for ask_price, ask_vol in sorted(od.sell_orders.items()):
+                if ask_price > passive_bid:
+                    break
+                qty = min(-ask_vol, buy_capacity)
+                orders.append(Order("ASH_COATED_OSMIUM", ask_price, qty))
+                buy_capacity -= qty
 
         if od.buy_orders and sell_capacity > 0:
-            best_bid, best_bid_vol = max(od.buy_orders.items())
-            if best_bid >= passive_ask:
-                orders.append(Order("ASH_COATED_OSMIUM", best_bid, -min(best_bid_vol, sell_capacity)))
+            for bid_price, bid_vol in sorted(od.buy_orders.items(), reverse=True):
+                if bid_price < passive_ask:
+                    break
+                qty = min(bid_vol, sell_capacity)
+                orders.append(Order("ASH_COATED_OSMIUM", bid_price, -qty))
+                sell_capacity -= qty
 
         # Passive quotes (z-score sized, inventory skewed)
         if buy_capacity > 0:
